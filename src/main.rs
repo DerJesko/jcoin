@@ -1,7 +1,6 @@
 extern crate ed25519;
 extern crate ed25519_dalek;
 extern crate generic_array;
-extern crate itertools;
 extern crate sha3;
 
 mod signature;
