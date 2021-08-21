@@ -1,4 +1,4 @@
-extern crate ed25519;
+extern crate chrono;
 extern crate ed25519_dalek;
 extern crate generic_array;
 extern crate sha3;
@@ -6,6 +6,7 @@ extern crate sha3;
 mod signature;
 
 //use crate::signature::{PublicKey, SecretKey, Signature};
+use chrono::{DateTime, Utc};
 use ed25519_dalek::{PublicKey, Signature};
 use generic_array::typenum::{U16, U32, U8};
 use generic_array::GenericArray;
@@ -14,9 +15,10 @@ use std::collections::HashMap;
 
 type HashOutput = GenericArray<u8, U32>;
 type TestingSpace = GenericArray<u8, U8>;
-type Timestamp = ();
+type Timestamp = DateTime<Utc>;
 type Identity = GenericArray<u8, U16>;
 type State = HashMap<Identity, (PublicKey, u128, u64)>; // maps public keys to public key, coin amount and counter
+type KnownTimelines = HashMap<HashOutput, (Block, State)>;
 
 fn hash(input: &[u8]) -> HashOutput {
     Sha3_256::digest(input)
@@ -42,12 +44,20 @@ struct Block {
 impl Block {
     /*
     verify block:
-    is the prev hash correct
-    is timestamp in the past
-    is timestamp in the future of the one before
+    is the prev hash correct ✓
+    is timestamp in the past ✓
+    is timestamp in the future of the one before ✓
     check transactions
     is block too big
     */
+    fn verify(&self, timelines: &KnownTimelines) -> bool {
+        match timelines.get(&self.prev_hash) {
+            Some((prev_block, state)) => {
+                prev_block.timestamp < self.timestamp && self.timestamp < Utc::now()
+            }
+            None => false,
+        }
+    }
 }
 
 enum Action {
