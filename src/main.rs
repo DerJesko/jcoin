@@ -64,6 +64,32 @@ enum Action {
     },
 }
 impl Action {
+    // performs the action without checking anything
+    fn perform(self, state: &mut State) {
+        match self {
+            Action::AddPublicKey { id, pk } => {
+                state.insert(id, (pk, 0, 0));
+            }
+            Action::Transaction {
+                source,
+                sink,
+                counter: _,
+                amount,
+                signature: _,
+            } => {
+                state
+                    .entry(source)
+                    .and_modify(|(_, source_amount, source_counter)| {
+                        *source_amount -= amount;
+                        *source_counter += 1;
+                    });
+                state.entry(sink).and_modify(|(_, sink_amount, _)| {
+                    *sink_amount += amount;
+                });
+            }
+        }
+    }
+
     /*
     verify transaction:
     verify signature ✓
