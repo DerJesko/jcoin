@@ -18,7 +18,7 @@ type Proof = GenericArray<u8, U8>;
 type Timestamp = DateTime<Utc>;
 type Identity = GenericArray<u8, U16>;
 type State = HashMap<Identity, (PublicKey, u128, u64)>; // maps public keys to public key, coin amount and counter
-type KnownTimelines = HashMap<HashOutput, (Block, State, usize)>;
+type KnownTimelines = HashMap<HashOutput, (Block, State, usize, usize)>;
 
 fn hash(input: &[u8]) -> HashOutput {
     Sha3_256::digest(input)
@@ -45,10 +45,11 @@ struct Block {
 impl Block {
     fn perform(self, timelines: &mut KnownTimelines) -> bool {
         match timelines.get(&self.prev_hash) {
-            Some((prev_block, prev_state, prev_max_size)) => {
+            Some((prev_block, prev_state, prev_max_size, prev_chain_len)) => {
                 if !(prev_block.timestamp < self.timestamp && self.timestamp < Utc::now()) {
                     return false;
                 }
+                // Check the validity of all the transactions
                 let mut state = prev_state.clone();
                 for action in &self.actions {
                     if !action.verify(&state) {
@@ -56,21 +57,35 @@ impl Block {
                     }
                     action.perform(&mut state);
                 }
+                // Make sure the block is not too big
                 let mut max_size = *prev_max_size;
                 if prev_block.actions.len() == *prev_max_size {
                     max_size += 1;
                 } else if prev_block.actions.len() < *prev_max_size / 2 {
                     max_size -= 1;
                 }
-                timelines.insert(hash(&self.to_bytes()), (self, state, max_size));
-                // TODO Check PoW
+                let self_hashed = hash(&self.to_bytes());
+                // Check PoW
+                // TODO think of a better policy than just 10 bits
+                let mut zero_bits = 10;
+                for i in 0..zero_bits / 8 {
+                    if self_hashed[i] != 0 {
+                        return false;
+                    }
+                }
+                let i = (zero_bits / 8) * 8;
+                zero_bits -= i;
+                if self_hashed[i] >= (2 as u8).pow(8 - zero_bits as u32) {
+                    return false;
+                }
+                // All is good, add it to your collection
+                timelines.insert(self_hashed, (self, state, max_size, prev_chain_len + 1));
                 true
             }
             None => false,
         }
     }
 
-    // TODO add timestamp in here
     fn to_bytes(&self) -> Vec<u8> {
         let mut result = Vec::new();
         for b in self
@@ -84,6 +99,7 @@ impl Block {
         for action in &self.actions {
             result.append(&mut action.to_bytes());
         }
+        result.append(vec![self.timestamp.to_rfc3339().as_bytes_mut()]);
         result
     }
 }
